@@ -527,6 +527,15 @@
     transition: height 0.3s ease;
   }
 
+n  /* ── Dark map overlay ── */
+  .map-dark-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    mix-blend-mode: multiply;
+    pointer-events: none;
+    z-index: 5;
+  }
 
   /* ── User location pulse (on map) ── */
   .user-marker {
@@ -604,6 +613,7 @@
 
     <div class="map-wrapper" id="mapWrapper">
       <div id="map"></div>
+      <div class="map-dark-overlay"></div>
       <div class="compass-overlay" id="compassOverlay">
         <div class="compass-ring" id="compassRing">
           <div class="compass-arrow" id="compassArrow"></div>
@@ -656,6 +666,7 @@ let deviceHeading = null;      // from deviceorientation
 let watchId = null;
 let compassActive = false;
 let gpsReadings = 0;
+let firstFixDone = false;
 let initialFitDone = false;
 let lastUpdateTime = 0;
 
@@ -691,25 +702,19 @@ function initMap() {
     touchZoom: true,
   }).setView([31.2304, 121.4737], 14);
 
-  // Dark tiles first, fall back to OSM
-  const tileServers = [
-    { url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', label: 'CartoDB-Dark' },
-    { url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', label: 'OSM' },
-    { url: 'https://tile.openstreetmap.de/{z}/{x}/{y}.png', label: 'OSM-DE' },
-  ];
+  // CartoDB dark tiles; fall back to OSM + dark overlay after 10s
+  let tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    maxZoom: 18,
+  }).addTo(map);
 
-  let tileIdx = 0;
-  let tileLayer = null;
+  const _fallbackTimer = setTimeout(() => {
+    map.removeLayer(tileLayer);
+    tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+    }).addTo(map);
+  }, 10000);
 
-  function tryTile() {
-    if (tileIdx >= tileServers.length) return;
-    const srv = tileServers[tileIdx];
-    if (tileLayer) map.removeLayer(tileLayer);
-    tileLayer = L.tileLayer(srv.url, { maxZoom: 18 }).addTo(map);
-    const t = setTimeout(() => { tileIdx++; tryTile(); }, 5000);
-    tileLayer.once('load', () => clearTimeout(t));
-  }
-  tryTile();
+  tileLayer.once('load', () => clearTimeout(_fallbackTimer));
 }
 
 // ── Load saved bike location ──
@@ -895,9 +900,10 @@ function updateCompass() {
 
   updateSignalBars(userPosition.accuracy);
 
-  // Pure distance-based auto toggle, needs 3+ stable GPS readings
-  const gpsStable = gpsReadings >= 3;
-  const shouldCompass = gpsStable && dist <= COMPASS_THRESHOLD;
+  // Auto toggle compass based on distance (with accuracy margin)
+  const gpsStable = gpsReadings >= 2;
+  const distWithMargin = dist - Math.min(userPosition.accuracy || 20, 30);
+  const shouldCompass = gpsStable && distWithMargin <= COMPASS_THRESHOLD;
 
   if (shouldCompass && !compassActive) {
     compassActive = true;
@@ -955,9 +961,20 @@ function startWatchingPosition() {
         heading: pos.coords.heading,
       };
 
-      // Throttle UI updates to ~1/sec for performance; always pass first reading
+      // Always check compass on every reading (before throttle)
+      if (savedLocation) {
+        updateCompass();
+      }
+
+      // Pan to user on first GPS fix
+      if (!firstFixDone) {
+        firstFixDone = true;
+        map.setView([userPosition.lat, userPosition.lng], 16);
+      }
+
+      // Throttle visual updates to ~2/sec for performance
       const now = Date.now();
-      if (gpsReadings > 1 && now - lastUpdateTime < 1000) return;
+      if (gpsReadings > 1 && now - lastUpdateTime < 500) return;
       lastUpdateTime = now;
 
       updateUserMarker(userPosition.lat, userPosition.lng);
@@ -965,10 +982,6 @@ function startWatchingPosition() {
       $('locStripes').classList.add('visible');
       $('statusTag').textContent = '定位中';
       $('statusTag').classList.add('active');
-
-      if (savedLocation) {
-        updateCompass();
-      }
     },
     (err) => {
       const msgs = { 1: '定位权限被拒绝', 2: '无法获取位置', 3: '定位超时' };
