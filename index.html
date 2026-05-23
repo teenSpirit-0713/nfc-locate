@@ -962,6 +962,33 @@ async function requestCompassPermission() {
 function startWatchingPosition() {
   if (!navigator.geolocation) return;
 
+  // Fast initial fix: allow cached position to get a quick first reading
+  // This avoids the 5-15s GPS cold-start wait before the compass can appear
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      if (gpsReadings > 0) return; // watchPosition already got a fix
+      gpsReadings++;
+      userPosition = {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+        heading: pos.coords.heading,
+      };
+      if (savedLocation) updateCompass();
+      if (!firstFixDone) {
+        firstFixDone = true;
+        map.setView([userPosition.lat, userPosition.lng], 16);
+      }
+      updateUserMarker(userPosition.lat, userPosition.lng);
+      updateAccuracy(userPosition.accuracy);
+      $('locStripes').classList.add('visible');
+      $('statusTag').textContent = '定位中';
+      $('statusTag').classList.add('active');
+    },
+    () => { /* ignore — watchPosition will handle it */ },
+    { enableHighAccuracy: false, timeout: 5000, maximumAge: 120000 }
+  );
+
   watchId = navigator.geolocation.watchPosition(
     (pos) => {
       gpsReadings++;
@@ -1018,6 +1045,7 @@ async function parkBike() {
     };
     localStorage.setItem('bike_location', JSON.stringify(savedLocation));
     placeBikeMarker(savedLocation.lat, savedLocation.lng);
+    updateCompass();
     updateAccuracy(userPosition.accuracy);
     $('statusTag').textContent = '已记录';
     $('statusTag').classList.add('active');
@@ -1042,6 +1070,7 @@ async function parkBike() {
       timestamp: Date.now(),
     };
     localStorage.setItem('bike_location', JSON.stringify(savedLocation));
+    updateCompass();
     updateAccuracy(pos.coords.accuracy);
     $('statusTag').textContent = '已记录';
     $('statusTag').classList.add('active');
