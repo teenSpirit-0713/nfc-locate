@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0a0a0a">
 <title>BIKE · LOCATE</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Noto+Sans+SC:wght@400;500;700;900&display=swap');
 
@@ -486,7 +486,7 @@
   <div class="spinner-text">获取位置中</div>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 // ── State ──
 let map = null;
@@ -504,11 +504,40 @@ function initMap() {
     attributionControl: false,
     dragging: true,
     touchZoom: true,
-  }).setView([31.2304, 121.4737], 14); // Default: Shanghai
+  }).setView([31.2304, 121.4737], 14);
 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-  }).addTo(map);
+  // Tile servers ordered by reliability in China
+  const tileServers = [
+    { url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', label: 'OSM' },
+    { url: 'https://tile.openstreetmap.de/{z}/{x}/{y}.png', label: 'OSM-DE' },
+  ];
+
+  let tileIndex = 0;
+  let tileLayer = null;
+
+  function tryTileServer() {
+    if (tileIndex >= tileServers.length) {
+      console.error('All tile servers failed');
+      return;
+    }
+    const server = tileServers[tileIndex];
+    if (tileLayer) map.removeLayer(tileLayer);
+    tileLayer = L.tileLayer(server.url, {
+      maxZoom: 19,
+    }).addTo(map);
+
+    // If this server fails after 5s, try next
+    const timeout = setTimeout(() => {
+      tileIndex++;
+      tryTileServer();
+    }, 5000);
+
+    tileLayer.once('load', () => {
+      clearTimeout(timeout);
+    });
+  }
+
+  tryTileServer();
 }
 
 // ── Load saved location ──
