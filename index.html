@@ -901,9 +901,8 @@ function updateCompass() {
   updateSignalBars(userPosition.accuracy);
 
   // Auto toggle compass based on distance (with accuracy margin)
-  const gpsStable = gpsReadings >= 2;
   const distWithMargin = dist - Math.min(userPosition.accuracy || 20, 30);
-  const shouldCompass = gpsStable && distWithMargin <= COMPASS_THRESHOLD;
+  const shouldCompass = distWithMargin <= COMPASS_THRESHOLD;
 
   if (shouldCompass && !compassActive) {
     compassActive = true;
@@ -925,7 +924,7 @@ function updateCompass() {
   }
 
   // Fit bounds once when both markers are on screen and GPS is stable
-  if (!shouldCompass && gpsStable && !initialFitDone) {
+  if (!shouldCompass && gpsReadings >= 2 && !initialFitDone) {
     fitBothMarkers();
   }
 }
