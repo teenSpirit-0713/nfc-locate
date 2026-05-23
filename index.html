@@ -398,6 +398,163 @@
   .accuracy-dot.on { background: var(--hi-vis); }
   .accuracy-dot.on.dim { background: var(--hi-vis-dim); }
 
+  /* ── Compass overlay ── */
+  .compass-overlay {
+    position: absolute;
+    inset: 0;
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.5s ease;
+    z-index: 10;
+    padding: 20px;
+  }
+  .compass-overlay.active {
+    opacity: 1;
+    pointer-events: all;
+  }
+
+  .compass-ring {
+    position: relative;
+    width: 200px; height: 200px;
+    border: 2px solid var(--border);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle, rgba(212,255,0,0.03) 0%, transparent 70%);
+  }
+  .compass-ring::before {
+    content: '';
+    position: absolute;
+    inset: -8px;
+    border: 1px dashed var(--dash);
+    border-radius: 50%;
+    opacity: 0.5;
+  }
+  /* Tick marks */
+  .compass-tick {
+    position: absolute;
+    width: 2px; height: 8px;
+    background: var(--border);
+    transform-origin: center 100px;
+  }
+  .compass-tick.cardinal {
+    width: 2px; height: 14px;
+    background: var(--text-muted);
+  }
+  .compass-tick.north {
+    background: var(--hi-vis);
+    height: 16px;
+  }
+  .compass-label {
+    position: absolute;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--text-muted);
+    letter-spacing: 0.1em;
+  }
+
+  .compass-arrow {
+    width: 0; height: 0;
+    border-left: 24px solid transparent;
+    border-right: 24px solid transparent;
+    border-bottom: 60px solid var(--hi-vis);
+    position: relative;
+    z-index: 2;
+    filter: drop-shadow(0 0 16px rgba(212,255,0,0.4));
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .compass-arrow::after {
+    content: '';
+    position: absolute;
+    top: 60px; left: -12px;
+    width: 0; height: 0;
+    border-left: 12px solid transparent;
+    border-right: 12px solid transparent;
+    border-top: 20px solid var(--hi-vis);
+    opacity: 0.3;
+  }
+  .compass-dot {
+    width: 8px; height: 8px;
+    background: var(--hi-vis);
+    border-radius: 50%;
+    position: absolute;
+    z-index: 3;
+    box-shadow: 0 0 12px rgba(212,255,0,0.6);
+  }
+
+  .compass-distance {
+    margin-top: 28px;
+    text-align: center;
+  }
+  .compass-dist-value {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 56px;
+    font-weight: 400;
+    color: var(--hi-vis);
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+  .compass-dist-unit {
+    font-size: 20px;
+    color: var(--hi-vis-dim);
+  }
+  .compass-dist-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    letter-spacing: 0.15em;
+    margin-top: 6px;
+    font-family: 'Share Tech Mono', monospace;
+    text-transform: uppercase;
+  }
+
+  .compass-signal {
+    display: flex;
+    gap: 2px;
+    margin-top: 16px;
+    align-items: flex-end;
+    height: 20px;
+  }
+  .compass-signal-bar {
+    width: 3px;
+    background: var(--hi-vis-dim);
+    border-radius: 1px;
+    transition: height 0.3s ease;
+  }
+
+  .compass-tap-hint {
+    position: absolute;
+    bottom: 16px;
+    font-size: 10px;
+    color: var(--text-muted);
+    letter-spacing: 0.1em;
+    font-family: 'Share Tech Mono', monospace;
+    animation: fade-hint 2s ease-in-out infinite;
+  }
+  @keyframes fade-hint {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 0.8; }
+  }
+
+  /* ── User location pulse (on map) ── */
+  .user-marker {
+    width: 16px; height: 16px;
+    background: #4DA6FF;
+    border: 3px solid #fff;
+    border-radius: 50%;
+    box-shadow: 0 0 0 6px rgba(77,166,255,0.25), 0 0 0 14px rgba(77,166,255,0.1);
+    animation: user-pulse 2s ease-out infinite;
+  }
+  @keyframes user-pulse {
+    0% { box-shadow: 0 0 0 6px rgba(77,166,255,0.25), 0 0 0 14px rgba(77,166,255,0.1); }
+    100% { box-shadow: 0 0 0 12px rgba(77,166,255,0.05), 0 0 0 28px rgba(77,166,255,0); }
+  }
+
   /* ── Responsive ── */
   @media (min-width: 540px) {
     .app { max-width: 480px; margin: 0 auto; }
@@ -460,6 +617,21 @@
 
     <div class="map-wrapper" id="mapWrapper">
       <div id="map"></div>
+      <div class="compass-overlay" id="compassOverlay">
+        <div class="compass-ring" id="compassRing">
+          <div class="compass-arrow" id="compassArrow"></div>
+          <div class="compass-dot"></div>
+        </div>
+        <div class="compass-distance">
+          <div class="compass-dist-value">
+            <span id="compassDist">0</span>
+            <span class="compass-dist-unit">m</span>
+          </div>
+          <div class="compass-dist-label" id="compassLabel">距离单车</div>
+        </div>
+        <div class="compass-signal" id="compassSignal"></div>
+        <div class="compass-tap-hint">点击切换地图</div>
+      </div>
       <div class="map-empty-state" id="mapEmpty">
         <div class="map-empty-icon">&#9873;</div>
         <div class="map-empty-text">尚未记录停车位置</div>
@@ -490,11 +662,36 @@
 <script>
 // ── State ──
 let map = null;
-let marker = null;
-let currentPosition = null;
-let savedLocation = null;
+let bikeMarker = null;
+let userMarker = null;
+let userPosition = null;       // { lat, lng, accuracy, heading }
+let savedLocation = null;      // { lat, lng, accuracy, timestamp }
+let deviceHeading = null;      // from deviceorientation
+let watchId = null;
+let compassActive = false;
+let compassManuallyDismissed = false;
 
+const COMPASS_THRESHOLD = 50;  // meters
 const $ = (s) => document.getElementById(s);
+
+// ── Math helpers ──
+function toRad(d) { return d * Math.PI / 180; }
+function toDeg(r) { return r * 180 / Math.PI; }
+
+function haversineDistance(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function bearing(lat1, lng1, lat2, lng2) {
+  const dLng = toRad(lng2 - lng1);
+  const y = Math.sin(dLng) * Math.cos(toRad(lat2));
+  const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLng);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
 
 // ── Init map ──
 function initMap() {
@@ -506,50 +703,33 @@ function initMap() {
     touchZoom: true,
   }).setView([31.2304, 121.4737], 14);
 
-  // Tile servers ordered by reliability in China
+  // Dark tiles first, fall back to OSM
   const tileServers = [
+    { url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', label: 'CartoDB-Dark' },
     { url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', label: 'OSM' },
     { url: 'https://tile.openstreetmap.de/{z}/{x}/{y}.png', label: 'OSM-DE' },
   ];
 
-  let tileIndex = 0;
+  let tileIdx = 0;
   let tileLayer = null;
 
-  function tryTileServer() {
-    if (tileIndex >= tileServers.length) {
-      console.error('All tile servers failed');
-      return;
-    }
-    const server = tileServers[tileIndex];
+  function tryTile() {
+    if (tileIdx >= tileServers.length) return;
+    const srv = tileServers[tileIdx];
     if (tileLayer) map.removeLayer(tileLayer);
-    tileLayer = L.tileLayer(server.url, {
-      maxZoom: 19,
-    }).addTo(map);
-
-    // If this server fails after 5s, try next
-    const timeout = setTimeout(() => {
-      tileIndex++;
-      tryTileServer();
-    }, 5000);
-
-    tileLayer.once('load', () => {
-      clearTimeout(timeout);
-    });
+    tileLayer = L.tileLayer(srv.url, { maxZoom: 19 }).addTo(map);
+    const t = setTimeout(() => { tileIdx++; tryTile(); }, 5000);
+    tileLayer.once('load', () => clearTimeout(t));
   }
-
-  tryTileServer();
+  tryTile();
 }
 
-// ── Load saved location ──
+// ── Load saved bike location ──
 function loadSaved() {
   const raw = localStorage.getItem('bike_location');
   if (raw) {
-    try {
-      savedLocation = JSON.parse(raw);
-      return true;
-    } catch (e) {
-      localStorage.removeItem('bike_location');
-    }
+    try { savedLocation = JSON.parse(raw); return true; }
+    catch (e) { localStorage.removeItem('bike_location'); }
   }
   return false;
 }
@@ -557,21 +737,19 @@ function loadSaved() {
 // ── Format time ──
 function formatTime(ts) {
   const d = new Date(ts);
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}/${p(d.getMonth()+1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
 function relativeTime(ts) {
-  const now = Date.now();
-  const diff = now - ts;
-  const mins = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
-
-  if (mins < 1) return '刚刚';
-  if (mins < 60) return `${mins} 分钟前`;
-  if (hours < 24) return `${hours} 小时前`;
-  return `${days} 天前`;
+  const diff = Date.now() - ts;
+  const m = Math.floor(diff / 60000);
+  const h = Math.floor(diff / 3600000);
+  const d = Math.floor(diff / 86400000);
+  if (m < 1) return '刚刚';
+  if (m < 60) return `${m} 分钟前`;
+  if (h < 24) return `${h} 小时前`;
+  return `${d} 天前`;
 }
 
 // ── Update accuracy bar ──
@@ -579,31 +757,42 @@ function updateAccuracy(accuracyMeters) {
   const bar = $('accuracyBar');
   const text = $('accuracyText');
   const dots = bar.querySelectorAll('.accuracy-dot');
-
-  let level;
-  if (accuracyMeters <= 5) level = 5;
-  else if (accuracyMeters <= 10) level = 4;
-  else if (accuracyMeters <= 20) level = 3;
-  else if (accuracyMeters <= 50) level = 2;
-  else level = 1;
-
+  let lvl;
+  if (accuracyMeters <= 5) lvl = 5;
+  else if (accuracyMeters <= 10) lvl = 4;
+  else if (accuracyMeters <= 20) lvl = 3;
+  else if (accuracyMeters <= 50) lvl = 2;
+  else lvl = 1;
   dots.forEach((dot, i) => {
     dot.className = 'accuracy-dot';
-    if (i < level) {
-      dot.classList.add('on');
-      if (level <= 2) dot.classList.add('dim');
-    }
+    if (i < lvl) { dot.classList.add('on'); if (lvl <= 2) dot.classList.add('dim'); }
   });
-
   text.textContent = `±${Math.round(accuracyMeters)}m`;
   bar.classList.add('visible');
 }
 
+// ── Update signal bars in compass mode ──
+function updateSignalBars(accuracyMeters) {
+  const container = $('compassSignal');
+  let lvl;
+  if (accuracyMeters <= 5) lvl = 5;
+  else if (accuracyMeters <= 10) lvl = 4;
+  else if (accuracyMeters <= 20) lvl = 3;
+  else if (accuracyMeters <= 50) lvl = 2;
+  else lvl = 1;
+  let html = '';
+  for (let i = 0; i < 5; i++) {
+    const h = (i + 1) * 4;
+    const bg = i < lvl ? 'var(--hi-vis)' : 'var(--border)';
+    html += `<div class="compass-signal-bar" style="height:${h}px;background:${bg}"></div>`;
+  }
+  container.innerHTML = html;
+}
+
 // ── Render UI ──
 function render() {
-  const hasSaved = loadSaved();
-
-  if (hasSaved && savedLocation) {
+  loadSaved();
+  if (savedLocation) {
     $('timeFull').textContent = formatTime(savedLocation.timestamp);
     $('timeRelative').textContent = relativeTime(savedLocation.timestamp);
     $('timeEmpty').textContent = '';
@@ -623,12 +812,8 @@ function showToast(msg, isError = false, duration = 2500) {
   clearTimeout(toastTimer);
   t.textContent = msg;
   t.className = 'toast ' + (isError ? 'error' : '');
-  requestAnimationFrame(() => {
-    t.classList.add('show');
-  });
-  toastTimer = setTimeout(() => {
-    t.classList.remove('show');
-  }, duration);
+  requestAnimationFrame(() => t.classList.add('show'));
+  toastTimer = setTimeout(() => t.classList.remove('show'), duration);
 }
 
 // ── Spinner ──
@@ -640,88 +825,215 @@ function hideSpinner() {
   $('spinner').classList.remove('active');
 }
 
-// ── Get current position ──
-function getPosition() {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error('浏览器不支持定位'));
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => resolve(pos),
-      (err) => {
-        const msgs = {
-          1: '定位权限被拒绝，请在设置中允许',
-          2: '暂时无法获取位置信息',
-          3: '定位超时，请重试',
-        };
-        reject(new Error(msgs[err.code] || '定位失败'));
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-    );
-  });
-}
-
-// ── Update marker on map ──
-function updateMapMarker(lat, lng, label) {
-  if (!map) initMap();
-
-  if (marker) map.removeLayer(marker);
-
-  const icon = L.divIcon({
-    className: 'custom-marker',
-    html: `<div style="
-      width: 28px; height: 28px;
-      background: #D4FF00;
-      border: 3px solid #0a0a0a;
-      border-radius: 50% 50% 50% 0;
-      transform: rotate(-45deg);
-      box-shadow: 0 0 20px rgba(212,255,0,0.5), 0 2px 8px rgba(0,0,0,0.6);
-    "></div>`,
+// ── Bike marker icon ──
+function createBikeIcon() {
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:28px;height:28px;background:#D4FF00;border:3px solid #0a0a0a;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 0 20px rgba(212,255,0,0.5),0 2px 8px rgba(0,0,0,0.6)"></div>`,
     iconSize: [28, 28],
     iconAnchor: [14, 14],
     popupAnchor: [0, -14],
   });
+}
 
-  marker = L.marker([lat, lng], { icon }).addTo(map);
-  if (label) marker.bindPopup(label, { closeButton: false, autoClose: false }).openPopup();
+function createUserIcon() {
+  return L.divIcon({
+    className: '',
+    html: '<div class="user-marker"></div>',
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+  });
+}
 
-  map.setView([lat, lng], savedLocation ? 17 : 16, { animate: true });
-
+// ── Place bike marker ──
+function placeBikeMarker(lat, lng, label) {
+  if (!map) initMap();
+  if (bikeMarker) map.removeLayer(bikeMarker);
+  bikeMarker = L.marker([lat, lng], { icon: createBikeIcon() }).addTo(map);
+  if (label) bikeMarker.bindPopup(label, { closeButton: false, autoClose: false }).openPopup();
+  $('map').style.display = 'block';
   $('mapWrapper').classList.remove('empty');
   $('mapEmpty').style.display = 'none';
+}
+
+// ── Update user marker position ──
+function updateUserMarker(lat, lng) {
+  if (!map) initMap();
+  if (!userMarker) {
+    userMarker = L.marker([lat, lng], { icon: createUserIcon() }).addTo(map);
+  } else {
+    userMarker.setLatLng([lat, lng]);
+  }
+  $('map').style.display = 'block';
+  $('mapWrapper').classList.remove('empty');
+  $('mapEmpty').style.display = 'none';
+}
+
+// ── Compass mode ──
+function updateCompass() {
+  if (!userPosition || !savedLocation) return;
+
+  const dist = haversineDistance(userPosition.lat, userPosition.lng, savedLocation.lat, savedLocation.lng);
+  const brg = bearing(userPosition.lat, userPosition.lng, savedLocation.lat, savedLocation.lng);
+
+  // Determine arrow rotation: bearing adjusted by device heading
+  let arrowDeg;
+  if (deviceHeading !== null) {
+    // Device heading tells us which direction the phone is pointing
+    // We want the arrow to point toward the bike relative to the phone's orientation
+    arrowDeg = brg - deviceHeading;
+  } else {
+    // No compass — arrow just points north-up toward bike
+    arrowDeg = brg;
+  }
+
+  $('compassArrow').style.transform = `rotate(${arrowDeg}deg)`;
+  $('compassDist').textContent = Math.round(dist);
+
+  // Proximity label
+  if (dist <= 3) $('compassLabel').textContent = '就在附近';
+  else if (dist <= 10) $('compassLabel').textContent = '非常接近';
+  else if (dist <= 30) $('compassLabel').textContent = '正在靠近';
+  else $('compassLabel').textContent = '距离单车';
+
+  updateSignalBars(userPosition.accuracy);
+
+  // Toggle compass vs map
+  const shouldCompass = dist <= COMPASS_THRESHOLD && !compassManuallyDismissed;
+  if (shouldCompass && !compassActive) {
+    compassActive = true;
+    $('compassOverlay').classList.add('active');
+  } else if (!shouldCompass && compassActive) {
+    compassActive = false;
+    $('compassOverlay').classList.remove('active');
+  }
+  // Reset manual dismiss when out of range
+  if (dist > COMPASS_THRESHOLD) {
+    compassManuallyDismissed = false;
+  }
+
+  // Update bike-finding button label
+  if (dist <= COMPASS_THRESHOLD) {
+    $('btnFind').textContent = '找车导航';
+  }
+}
+
+// ── Toggle compass (tap to dismiss) ──
+function toggleCompass() {
+  if (compassActive) {
+    compassManuallyDismissed = true;
+    compassActive = false;
+    $('compassOverlay').classList.remove('active');
+  }
+}
+$('compassOverlay').addEventListener('click', toggleCompass);
+
+// ── Device orientation ──
+function onDeviceOrientation(e) {
+  // webkitCompassHeading for iOS, alpha for Android
+  if (e.webkitCompassHeading !== undefined) {
+    deviceHeading = e.webkitCompassHeading;
+  } else if (e.alpha !== null) {
+    // alpha is 0-360, but 0 = north on Android when absolute is true
+    deviceHeading = e.alpha;
+  }
+}
+window.addEventListener('deviceorientationabsolute', onDeviceOrientation, true);
+window.addEventListener('deviceorientation', onDeviceOrientation, true);
+
+// ── Request device orientation permission (iOS 13+) ──
+async function requestCompassPermission() {
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try {
+      const perm = await DeviceOrientationEvent.requestPermission();
+      if (perm === 'granted') {
+        window.addEventListener('deviceorientation', onDeviceOrientation);
+      }
+    } catch (e) {
+      // Silently fail — compass arrow will just use bearing
+    }
+  }
+}
+
+// ── Real-time position tracking ──
+function startWatchingPosition() {
+  if (!navigator.geolocation) return;
+
+  watchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      userPosition = {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+        heading: pos.coords.heading,
+      };
+      updateUserMarker(userPosition.lat, userPosition.lng);
+      updateAccuracy(userPosition.accuracy);
+      $('locStripes').classList.add('visible');
+      $('statusTag').textContent = '定位中';
+      $('statusTag').classList.add('active');
+
+      if (savedLocation) {
+        updateCompass();
+      }
+    },
+    (err) => {
+      const msgs = { 1: '定位权限被拒绝', 2: '无法获取位置', 3: '定位超时' };
+      $('statusTag').textContent = msgs[err.code] || '定位失败';
+      $('statusTag').classList.remove('active');
+    },
+    { enableHighAccuracy: true, timeout: 30000, maximumAge: 5000 }
+  );
 }
 
 // ── PARK ──
 async function parkBike() {
   const btn = $('btnPark');
   btn.disabled = true;
-  showSpinner('正在记录停车位置');
 
-  try {
-    const pos = await getPosition();
-    const { latitude, longitude, accuracy } = pos.coords;
-
+  // If we already have a fresh position from watchPosition, use it
+  if (userPosition) {
     savedLocation = {
-      lat: latitude,
-      lng: longitude,
-      accuracy: accuracy,
+      lat: userPosition.lat,
+      lng: userPosition.lng,
+      accuracy: userPosition.accuracy,
       timestamp: Date.now(),
     };
     localStorage.setItem('bike_location', JSON.stringify(savedLocation));
-
-    updateAccuracy(accuracy);
-
-    $('locStripes').classList.add('visible');
+    placeBikeMarker(savedLocation.lat, savedLocation.lng, '我的单车');
+    updateAccuracy(userPosition.accuracy);
     $('statusTag').textContent = '已记录';
     $('statusTag').classList.add('active');
-
-    updateMapMarker(latitude, longitude, '我的单车');
     render();
+    showToast('停车位置已记录');
+    btn.disabled = false;
+    return;
+  }
 
+  // Fallback: single position request
+  showSpinner('正在记录停车位置');
+  try {
+    const pos = await new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: true, timeout: 15000, maximumAge: 0,
+      });
+    });
+    savedLocation = {
+      lat: pos.coords.latitude,
+      lng: pos.coords.longitude,
+      accuracy: pos.coords.accuracy,
+      timestamp: Date.now(),
+    };
+    localStorage.setItem('bike_location', JSON.stringify(savedLocation));
+    updateAccuracy(pos.coords.accuracy);
+    $('statusTag').textContent = '已记录';
+    $('statusTag').classList.add('active');
+    placeBikeMarker(savedLocation.lat, savedLocation.lng, '我的单车');
+    render();
     showToast('停车位置已记录');
   } catch (err) {
-    showToast(err.message, true);
+    const msgs = { 1: '定位权限被拒绝，请在设置中允许', 2: '暂时无法获取位置信息', 3: '定位超时，请重试' };
+    showToast(msgs[err.code] || '定位失败', true);
   } finally {
     hideSpinner();
     btn.disabled = false;
@@ -730,52 +1042,40 @@ async function parkBike() {
 
 // ── FIND ──
 function findBike() {
-  if (!savedLocation) {
-    showToast('没有停车记录', true);
-    return;
-  }
-
-  // Open in maps app
+  if (!savedLocation) { showToast('没有停车记录', true); return; }
   const { lat, lng } = savedLocation;
   const label = encodeURIComponent('我的单车');
   const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
-
-  let url;
-  if (isIOS) {
-    url = `maps://maps.apple.com/?q=${label}&ll=${lat},${lng}`;
-  } else {
-    url = `geo:${lat},${lng}?q=${lat},${lng}(${label})`;
-  }
-
-  // Fallback: try Google Maps in browser
+  let url = isIOS
+    ? `maps://maps.apple.com/?q=${label}&ll=${lat},${lng}`
+    : `geo:${lat},${lng}?q=${lat},${lng}(${label})`;
   const fallback = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
-
   const start = Date.now();
   window.location.href = url;
-
-  // If no navigation app opened after 1.5s, fallback to browser
   setTimeout(() => {
     if (Date.now() - start < 2000) return;
     window.open(fallback, '_blank');
   }, 1500);
 }
 
-// ── Update relative time every 30s ──
+// ── Tick timers ──
 function tickTime() {
-  if (savedLocation) {
-    $('timeRelative').textContent = relativeTime(savedLocation.timestamp);
-  }
+  if (savedLocation) $('timeRelative').textContent = relativeTime(savedLocation.timestamp);
 }
 
-// ── Auto-park on NFC tap ──
-// When the page opens from an NFC tap, we auto-record the position.
-// The URL hash #auto triggers this behavior.
+// ── Auto-park on NFC tap (URL hash #auto) ──
 function autoParkIfNeeded() {
   if (window.location.hash === '#auto') {
-    // Clean URL
     history.replaceState(null, '', window.location.pathname);
-    // Small delay to let the page render
-    setTimeout(() => parkBike(), 600);
+    // Wait for watchPosition to get a fix, then park
+    const check = setInterval(() => {
+      if (userPosition) {
+        clearInterval(check);
+        parkBike();
+      }
+    }, 500);
+    // Timeout after 15s
+    setTimeout(() => clearInterval(check), 15000);
   }
 }
 
@@ -785,10 +1085,7 @@ function bootstrap() {
   const hasSaved = loadSaved();
 
   if (hasSaved && savedLocation) {
-    $('map').style.display = 'block';
-    $('mapWrapper').classList.remove('empty');
-    updateMapMarker(savedLocation.lat, savedLocation.lng, '我的单车');
-    $('locStripes').classList.add('visible');
+    placeBikeMarker(savedLocation.lat, savedLocation.lng, '我的单车');
     updateAccuracy(savedLocation.accuracy || 20);
     $('statusTag').textContent = '已记录';
     $('statusTag').classList.add('active');
@@ -797,8 +1094,10 @@ function bootstrap() {
     $('mapWrapper').classList.add('empty');
     $('mapEmpty').style.display = 'flex';
   }
-
+  $('locStripes').classList.add('visible');
   render();
+  startWatchingPosition();
+  requestCompassPermission();
   autoParkIfNeeded();
 }
 
