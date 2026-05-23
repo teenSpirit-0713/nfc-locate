@@ -180,8 +180,11 @@
     height: 100%;
   }
   .leaflet-container {
-    background: var(--surface);
+    background: var(--bg);
     font-family: inherit;
+  }
+  .leaflet-tile-pane {
+    background: var(--bg);
   }
   .leaflet-control-zoom a {
     background: var(--surface) !important;
@@ -692,6 +695,32 @@ function bearing(lat1, lng1, lat2, lng2) {
   return (toDeg(Math.atan2(y, x)) + 360) % 360;
 }
 
+// WGS84 → GCJ-02 — Gaode/Amap tiles use GCJ-02 while GPS returns WGS84
+// Without this conversion markers would be offset by 300–500m in China
+function wgs84ToGcj02(lat, lng) {
+  if (lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271) {
+    return { lat, lng };
+  }
+  var PI = Math.PI, A = 6378245.0, EE = 0.00669342162296594323;
+  var x = lng - 105.0, y = lat - 35.0;
+  var dLat = -100.0 + 2.0*x + 3.0*y + 0.2*y*y + 0.1*x*y + 0.2*Math.sqrt(Math.abs(x));
+  dLat += (20.0*Math.sin(6.0*x*PI) + 20.0*Math.sin(2.0*x*PI)) * 2.0/3.0;
+  dLat += (20.0*Math.sin(y*PI) + 40.0*Math.sin(y/3.0*PI)) * 2.0/3.0;
+  dLat += (160.0*Math.sin(y/12.0*PI) + 320.0*Math.sin(y*PI/30.0)) * 2.0/3.0;
+  var dLng = 300.0 + x + 2.0*y + 0.1*x*x + 0.1*x*y + 0.1*Math.sqrt(Math.abs(x));
+  dLng += (20.0*Math.sin(6.0*x*PI) + 20.0*Math.sin(2.0*x*PI)) * 2.0/3.0;
+  dLng += (20.0*Math.sin(x*PI) + 40.0*Math.sin(x/3.0*PI)) * 2.0/3.0;
+  dLng += (150.0*Math.sin(x/12.0*PI) + 300.0*Math.sin(x/30.0*PI)) * 2.0/3.0;
+  var radLat = lat/180.0*PI;
+  var magic = Math.sin(radLat);
+  magic = 1 - EE*magic*magic;
+  var sqrtMagic = Math.sqrt(magic);
+  return {
+    lat: lat + (dLat*180.0) / ((A*(1-EE)) / (magic*sqrtMagic) * PI),
+    lng: lng + (dLng*180.0) / (A/sqrtMagic * Math.cos(radLat) * PI),
+  };
+}
+
 // ── Init map ──
 function initMap() {
   if (map) return;
@@ -700,21 +729,15 @@ function initMap() {
     attributionControl: false,
     dragging: true,
     touchZoom: true,
-  }).setView([31.2304, 121.4737], 14);
+  });
+  var shGcj = wgs84ToGcj02(31.2304, 121.4737);
+  map.setView([shGcj.lat, shGcj.lng], 14);
 
-  // CartoDB dark tiles; fall back to OSM + dark overlay after 10s
-  let tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  // Gaode dark tiles (style=8) — fast CDN in China, no key required
+  L.tileLayer('https://wprd0{s}.is.autonavi.com/appmaptile?x={x}&y={y}&z={z}&lang=zh_cn&size=1&scl=1&style=8', {
     maxZoom: 18,
+    subdomains: ['1', '2', '3', '4'],
   }).addTo(map);
-
-  const _fallbackTimer = setTimeout(() => {
-    map.removeLayer(tileLayer);
-    tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 18,
-    }).addTo(map);
-  }, 10000);
-
-  tileLayer.once('load', () => clearTimeout(_fallbackTimer));
 }
 
 // ── Load saved bike location ──
@@ -843,8 +866,9 @@ function createUserIcon() {
 // ── Place bike marker ──
 function placeBikeMarker(lat, lng) {
   if (!map) initMap();
+  var gcj = wgs84ToGcj02(lat, lng);
   if (bikeMarker) map.removeLayer(bikeMarker);
-  bikeMarker = L.marker([lat, lng], { icon: createBikeIcon() }).addTo(map);
+  bikeMarker = L.marker([gcj.lat, gcj.lng], { icon: createBikeIcon() }).addTo(map);
   if (compassActive) bikeMarker.setOpacity(0);
   $('map').style.display = 'block';
   $('mapWrapper').classList.remove('empty');
@@ -854,10 +878,11 @@ function placeBikeMarker(lat, lng) {
 // ── Update user marker position ──
 function updateUserMarker(lat, lng) {
   if (!map) initMap();
+  var gcj = wgs84ToGcj02(lat, lng);
   if (!userMarker) {
-    userMarker = L.marker([lat, lng], { icon: createUserIcon() }).addTo(map);
+    userMarker = L.marker([gcj.lat, gcj.lng], { icon: createUserIcon() }).addTo(map);
   } else {
-    userMarker.setLatLng([lat, lng]);
+    userMarker.setLatLng([gcj.lat, gcj.lng]);
   }
   if (compassActive) userMarker.setOpacity(0);
   $('map').style.display = 'block';
@@ -871,10 +896,9 @@ function fitBothMarkers() {
   if (!userMarker || !bikeMarker) return;
   const dist = haversineDistance(userPosition.lat, userPosition.lng, savedLocation.lat, savedLocation.lng);
   if (dist <= COMPASS_THRESHOLD) return; // compass mode handles this
-  const bounds = L.latLngBounds(
-    [userPosition.lat, userPosition.lng],
-    [savedLocation.lat, savedLocation.lng]
-  );
+  var ugcj = wgs84ToGcj02(userPosition.lat, userPosition.lng);
+  var bgcj = wgs84ToGcj02(savedLocation.lat, savedLocation.lng);
+  const bounds = L.latLngBounds([ugcj.lat, ugcj.lng], [bgcj.lat, bgcj.lng]);
   map.fitBounds(bounds, { padding: [50, 50], maxZoom: 17, animate: true });
   initialFitDone = true;
 }
@@ -977,7 +1001,8 @@ function startWatchingPosition() {
       if (savedLocation) updateCompass();
       if (!firstFixDone) {
         firstFixDone = true;
-        map.setView([userPosition.lat, userPosition.lng], 16);
+        var gcj = wgs84ToGcj02(userPosition.lat, userPosition.lng);
+        map.setView([gcj.lat, gcj.lng], 16);
       }
       updateUserMarker(userPosition.lat, userPosition.lng);
       updateAccuracy(userPosition.accuracy);
@@ -1007,7 +1032,8 @@ function startWatchingPosition() {
       // Pan to user on first GPS fix
       if (!firstFixDone) {
         firstFixDone = true;
-        map.setView([userPosition.lat, userPosition.lng], 16);
+        var gcj = wgs84ToGcj02(userPosition.lat, userPosition.lng);
+        map.setView([gcj.lat, gcj.lng], 16);
       }
 
       // Throttle visual updates to ~2/sec for performance
