@@ -908,9 +908,19 @@ function updateCompass() {
   if (shouldCompass && !compassActive) {
     compassActive = true;
     $('compassOverlay').classList.add('active');
+    // Hide map UI behind compass overlay
+    var zc = document.querySelector('.leaflet-control-zoom');
+    if (zc) zc.style.display = 'none';
+    if (userMarker) userMarker.setOpacity(0);
+    if (bikeMarker) bikeMarker.setOpacity(0);
   } else if (!shouldCompass && compassActive) {
     compassActive = false;
     $('compassOverlay').classList.remove('active');
+    // Restore map UI
+    var zc = document.querySelector('.leaflet-control-zoom');
+    if (zc) zc.style.display = '';
+    if (userMarker) userMarker.setOpacity(1);
+    if (bikeMarker) bikeMarker.setOpacity(1);
     initialFitDone = false; // re-fit when leaving compass mode
   }
 
@@ -922,11 +932,11 @@ function updateCompass() {
 
 // ── Device orientation ──
 function onDeviceOrientation(e) {
-  // webkitCompassHeading for iOS, alpha for Android
+  // webkitCompassHeading for iOS, alpha for Android (absolute only)
   if (e.webkitCompassHeading !== undefined) {
     deviceHeading = e.webkitCompassHeading;
-  } else if (e.alpha !== null) {
-    // alpha is 0-360, but 0 = north on Android when absolute is true
+  } else if (e.absolute === true && e.alpha !== null) {
+    // Only use absolute heading — non-absolute events would corrupt the value
     deviceHeading = e.alpha;
   }
 }
