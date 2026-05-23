@@ -183,6 +183,10 @@
     background: var(--surface);
     font-family: inherit;
   }
+  /* Force dark map tiles via CSS filter */
+  .leaflet-tile-pane img {
+    filter: brightness(0.35) saturate(0.25) hue-rotate(160deg);
+  }
   .leaflet-control-zoom a {
     background: var(--surface) !important;
     color: var(--text) !important;
@@ -670,6 +674,8 @@ let deviceHeading = null;      // from deviceorientation
 let watchId = null;
 let compassActive = false;
 let compassManuallyDismissed = false;
+let gpsReadings = 0;           // counter for GPS stability
+let lastCompassDist = null;    // previous distance for stability check
 
 const COMPASS_THRESHOLD = 50;  // meters
 const $ = (s) => document.getElementById(s);
@@ -898,8 +904,9 @@ function updateCompass() {
 
   updateSignalBars(userPosition.accuracy);
 
-  // Toggle compass vs map
-  const shouldCompass = dist <= COMPASS_THRESHOLD && !compassManuallyDismissed;
+  // Toggle compass vs map — require 3+ stable GPS readings
+  const gpsStable = gpsReadings >= 3;
+  const shouldCompass = gpsStable && dist <= COMPASS_THRESHOLD && !compassManuallyDismissed;
   if (shouldCompass && !compassActive) {
     compassActive = true;
     $('compassOverlay').classList.add('active');
@@ -908,7 +915,7 @@ function updateCompass() {
     $('compassOverlay').classList.remove('active');
   }
   // Reset manual dismiss when out of range
-  if (dist > COMPASS_THRESHOLD) {
+  if (dist > COMPASS_THRESHOLD && gpsStable) {
     compassManuallyDismissed = false;
   }
 
@@ -961,12 +968,18 @@ function startWatchingPosition() {
 
   watchId = navigator.geolocation.watchPosition(
     (pos) => {
+      gpsReadings++;
+      const prevDist = userPosition && savedLocation
+        ? haversineDistance(userPosition.lat, userPosition.lng, savedLocation.lat, savedLocation.lng)
+        : null;
+
       userPosition = {
         lat: pos.coords.latitude,
         lng: pos.coords.longitude,
         accuracy: pos.coords.accuracy,
         heading: pos.coords.heading,
       };
+
       updateUserMarker(userPosition.lat, userPosition.lng);
       updateAccuracy(userPosition.accuracy);
       $('locStripes').classList.add('visible');
@@ -975,6 +988,11 @@ function startWatchingPosition() {
 
       if (savedLocation) {
         updateCompass();
+      }
+
+      // Track distance for stability
+      if (savedLocation) {
+        lastCompassDist = haversineDistance(userPosition.lat, userPosition.lng, savedLocation.lat, savedLocation.lng);
       }
     },
     (err) => {
