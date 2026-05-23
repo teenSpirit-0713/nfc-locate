@@ -183,9 +183,9 @@
     background: var(--surface);
     font-family: inherit;
   }
-  /* Force dark map tiles via CSS filter */
-  .leaflet-tile-pane img {
-    filter: brightness(0.35) saturate(0.25) hue-rotate(160deg);
+  /* Force dark map tiles — applied to container so new tiles inherit it */
+  .leaflet-tile-pane {
+    filter: brightness(0.35) saturate(0.25) hue-rotate(160deg) !important;
   }
   .leaflet-control-zoom a {
     background: var(--surface) !important;
@@ -531,19 +531,6 @@
     transition: height 0.3s ease;
   }
 
-  .compass-tap-hint {
-    position: absolute;
-    bottom: 16px;
-    font-size: 10px;
-    color: var(--text-muted);
-    letter-spacing: 0.1em;
-    font-family: 'Share Tech Mono', monospace;
-    animation: fade-hint 2s ease-in-out infinite;
-  }
-  @keyframes fade-hint {
-    0%, 100% { opacity: 0.3; }
-    50% { opacity: 0.8; }
-  }
 
   /* ── User location pulse (on map) ── */
   .user-marker {
@@ -634,7 +621,6 @@
           <div class="compass-dist-label" id="compassLabel">距离单车</div>
         </div>
         <div class="compass-signal" id="compassSignal"></div>
-        <div class="compass-tap-hint">点击切换地图</div>
       </div>
       <div class="map-empty-state" id="mapEmpty">
         <div class="map-empty-icon">&#9873;</div>
@@ -673,9 +659,8 @@ let savedLocation = null;      // { lat, lng, accuracy, timestamp }
 let deviceHeading = null;      // from deviceorientation
 let watchId = null;
 let compassActive = false;
-let compassManuallyDismissed = false;
-let gpsReadings = 0;           // counter for GPS stability
-let lastCompassDist = null;    // previous distance for stability check
+let gpsReadings = 0;
+let boundsAdjusted = false;    // track whether we've fit both markers on screen
 
 const COMPASS_THRESHOLD = 50;  // meters
 const $ = (s) => document.getElementById(s);
@@ -831,14 +816,16 @@ function hideSpinner() {
   $('spinner').classList.remove('active');
 }
 
-// ── Bike marker icon ──
+// ── Bike marker icon (with built-in label, no floating popup) ──
 function createBikeIcon() {
   return L.divIcon({
     className: '',
-    html: `<div style="width:28px;height:28px;background:#D4FF00;border:3px solid #0a0a0a;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 0 20px rgba(212,255,0,0.5),0 2px 8px rgba(0,0,0,0.6)"></div>`,
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
-    popupAnchor: [0, -14],
+    html: `<div style="display:flex;flex-direction:column;align-items:center;transform:translateY(-20px)">
+      <div style="width:28px;height:28px;background:#D4FF00;border:3px solid #0a0a0a;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 0 20px rgba(212,255,0,0.5),0 2px 8px rgba(0,0,0,0.6)"></div>
+      <div style="margin-top:6px;font-size:11px;font-weight:700;color:#D4FF00;letter-spacing:0.06em;text-shadow:0 0 8px rgba(212,255,0,0.4);white-space:nowrap">我的单车</div>
+    </div>`,
+    iconSize: [80, 60],
+    iconAnchor: [40, 42],
   });
 }
 
@@ -852,11 +839,10 @@ function createUserIcon() {
 }
 
 // ── Place bike marker ──
-function placeBikeMarker(lat, lng, label) {
+function placeBikeMarker(lat, lng) {
   if (!map) initMap();
   if (bikeMarker) map.removeLayer(bikeMarker);
   bikeMarker = L.marker([lat, lng], { icon: createBikeIcon() }).addTo(map);
-  if (label) bikeMarker.bindPopup(label, { closeButton: false, autoClose: false }).openPopup();
   $('map').style.display = 'block';
   $('mapWrapper').classList.remove('empty');
   $('mapEmpty').style.display = 'none';
@@ -875,6 +861,20 @@ function updateUserMarker(lat, lng) {
   $('mapEmpty').style.display = 'none';
 }
 
+// ── Fit map bounds to show both user and bike ──
+function fitBothMarkers() {
+  if (!map || !userPosition || !savedLocation) return;
+  if (!userMarker || !bikeMarker) return;
+  const dist = haversineDistance(userPosition.lat, userPosition.lng, savedLocation.lat, savedLocation.lng);
+  if (dist <= COMPASS_THRESHOLD) return; // compass mode handles this
+  const bounds = L.latLngBounds(
+    [userPosition.lat, userPosition.lng],
+    [savedLocation.lat, savedLocation.lng]
+  );
+  map.fitBounds(bounds, { padding: [50, 50], maxZoom: 17, animate: true });
+  boundsAdjusted = true;
+}
+
 // ── Compass mode ──
 function updateCompass() {
   if (!userPosition || !savedLocation) return;
@@ -882,21 +882,15 @@ function updateCompass() {
   const dist = haversineDistance(userPosition.lat, userPosition.lng, savedLocation.lat, savedLocation.lng);
   const brg = bearing(userPosition.lat, userPosition.lng, savedLocation.lat, savedLocation.lng);
 
-  // Determine arrow rotation: bearing adjusted by device heading
-  let arrowDeg;
+  // Arrow rotation: bearing adjusted by device heading
+  let arrowDeg = brg;
   if (deviceHeading !== null) {
-    // Device heading tells us which direction the phone is pointing
-    // We want the arrow to point toward the bike relative to the phone's orientation
     arrowDeg = brg - deviceHeading;
-  } else {
-    // No compass — arrow just points north-up toward bike
-    arrowDeg = brg;
   }
 
   $('compassArrow').style.transform = `rotate(${arrowDeg}deg)`;
   $('compassDist').textContent = Math.round(dist);
 
-  // Proximity label
   if (dist <= 3) $('compassLabel').textContent = '就在附近';
   else if (dist <= 10) $('compassLabel').textContent = '非常接近';
   else if (dist <= 30) $('compassLabel').textContent = '正在靠近';
@@ -904,9 +898,10 @@ function updateCompass() {
 
   updateSignalBars(userPosition.accuracy);
 
-  // Toggle compass vs map — require 3+ stable GPS readings
+  // Pure distance-based auto toggle, needs 3+ stable GPS readings
   const gpsStable = gpsReadings >= 3;
-  const shouldCompass = gpsStable && dist <= COMPASS_THRESHOLD && !compassManuallyDismissed;
+  const shouldCompass = gpsStable && dist <= COMPASS_THRESHOLD;
+
   if (shouldCompass && !compassActive) {
     compassActive = true;
     $('compassOverlay').classList.add('active');
@@ -914,26 +909,15 @@ function updateCompass() {
     compassActive = false;
     $('compassOverlay').classList.remove('active');
   }
-  // Reset manual dismiss when out of range
-  if (dist > COMPASS_THRESHOLD && gpsStable) {
-    compassManuallyDismissed = false;
-  }
 
-  // Update bike-finding button label
-  if (dist <= COMPASS_THRESHOLD) {
-    $('btnFind').textContent = '找车导航';
+  // Fit bounds when in map mode (both markers visible)
+  if (!shouldCompass && gpsStable && !boundsAdjusted) {
+    fitBothMarkers();
+  }
+  if (!shouldCompass) {
+    boundsAdjusted = false; // keep re-adjusting as positions change
   }
 }
-
-// ── Toggle compass (tap to dismiss) ──
-function toggleCompass() {
-  if (compassActive) {
-    compassManuallyDismissed = true;
-    compassActive = false;
-    $('compassOverlay').classList.remove('active');
-  }
-}
-$('compassOverlay').addEventListener('click', toggleCompass);
 
 // ── Device orientation ──
 function onDeviceOrientation(e) {
@@ -969,10 +953,6 @@ function startWatchingPosition() {
   watchId = navigator.geolocation.watchPosition(
     (pos) => {
       gpsReadings++;
-      const prevDist = userPosition && savedLocation
-        ? haversineDistance(userPosition.lat, userPosition.lng, savedLocation.lat, savedLocation.lng)
-        : null;
-
       userPosition = {
         lat: pos.coords.latitude,
         lng: pos.coords.longitude,
@@ -988,11 +968,6 @@ function startWatchingPosition() {
 
       if (savedLocation) {
         updateCompass();
-      }
-
-      // Track distance for stability
-      if (savedLocation) {
-        lastCompassDist = haversineDistance(userPosition.lat, userPosition.lng, savedLocation.lat, savedLocation.lng);
       }
     },
     (err) => {
@@ -1018,7 +993,7 @@ async function parkBike() {
       timestamp: Date.now(),
     };
     localStorage.setItem('bike_location', JSON.stringify(savedLocation));
-    placeBikeMarker(savedLocation.lat, savedLocation.lng, '我的单车');
+    placeBikeMarker(savedLocation.lat, savedLocation.lng);
     updateAccuracy(userPosition.accuracy);
     $('statusTag').textContent = '已记录';
     $('statusTag').classList.add('active');
@@ -1046,7 +1021,7 @@ async function parkBike() {
     updateAccuracy(pos.coords.accuracy);
     $('statusTag').textContent = '已记录';
     $('statusTag').classList.add('active');
-    placeBikeMarker(savedLocation.lat, savedLocation.lng, '我的单车');
+    placeBikeMarker(savedLocation.lat, savedLocation.lng);
     render();
     showToast('停车位置已记录');
   } catch (err) {
@@ -1103,7 +1078,7 @@ function bootstrap() {
   const hasSaved = loadSaved();
 
   if (hasSaved && savedLocation) {
-    placeBikeMarker(savedLocation.lat, savedLocation.lng, '我的单车');
+    placeBikeMarker(savedLocation.lat, savedLocation.lng);
     updateAccuracy(savedLocation.accuracy || 20);
     $('statusTag').textContent = '已记录';
     $('statusTag').classList.add('active');
