@@ -413,7 +413,7 @@
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.5s ease;
-    z-index: 10;
+    z-index: 800;
     padding: 20px;
   }
   .compass-overlay.active {
@@ -734,7 +734,7 @@ function initMap() {
   map.setView([shGcj.lat, shGcj.lng], 14);
 
   // Gaode dark tiles (style=8) — fast CDN in China, no key required
-  L.tileLayer('https://wprd0{s}.is.autonavi.com/appmaptile?x={x}&y={y}&z={z}&lang=zh_cn&size=1&scl=1&style=8', {
+  L.tileLayer('https://wprd0{s}.is.autonavi.com/appmaptile?x={x}&y={y}&z={z}&lang=zh_cn&size=1&scl=2&style=8', {
     maxZoom: 18,
     subdomains: ['1', '2', '3', '4'],
   }).addTo(map);
