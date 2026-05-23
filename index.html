@@ -845,6 +845,7 @@ function placeBikeMarker(lat, lng) {
   if (!map) initMap();
   if (bikeMarker) map.removeLayer(bikeMarker);
   bikeMarker = L.marker([lat, lng], { icon: createBikeIcon() }).addTo(map);
+  if (compassActive) bikeMarker.setOpacity(0);
   $('map').style.display = 'block';
   $('mapWrapper').classList.remove('empty');
   $('mapEmpty').style.display = 'none';
@@ -858,6 +859,7 @@ function updateUserMarker(lat, lng) {
   } else {
     userMarker.setLatLng([lat, lng]);
   }
+  if (compassActive) userMarker.setOpacity(0);
   $('map').style.display = 'block';
   $('mapWrapper').classList.remove('empty');
   $('mapEmpty').style.display = 'none';
