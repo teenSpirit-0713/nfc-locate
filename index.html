@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0a0a">
+<title>BIKE · LOCATE</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Noto+Sans+SC:wght@400;500;700;900&display=swap');
+
+  :root {
+    --bg: #0a0a0a;
+    --surface: #141414;
+    --surface-raised: #1c1c1c;
+    --hi-vis: #D4FF00;
+    --hi-vis-dim: #7A9400;
+    --text: #e0e0e0;
+    --text-muted: #6b6b6b;
+    --danger: #FF3B30;
+    --border: #2a2a2a;
+    --dash: #333;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    font-family: 'Noto Sans SC', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* ── Noise texture overlay ── */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* ── Tire tread pattern ── */
+  .tread-pattern {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 4px;
+    background: repeating-linear-gradient(
+      90deg,
+      var(--hi-vis) 0px,
+      var(--hi-vis) 12px,
+      transparent 12px,
+      transparent 20px
+    );
+    opacity: 0.6;
+    z-index: 100;
+  }
+  .tread-pattern.bottom {
+    top: auto; bottom: 0;
+  }
+
+  /* ── App container ── */
+  .app {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── Header ── */
+  .header {
+    padding: 20px 24px 0;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+  .logo {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 0.25em;
+    color: var(--hi-vis);
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .logo-dot {
+    width: 6px; height: 6px;
+    background: var(--hi-vis);
+    border-radius: 50%;
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; box-shadow: 0 0 6px var(--hi-vis); }
+    50% { opacity: 0.3; box-shadow: 0 0 2px var(--hi-vis); }
+  }
+  .status-tag {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    background: var(--surface);
+    padding: 4px 10px;
+    border-radius: 2px;
+    border: 1px solid var(--border);
+  }
+  .status-tag.active {
+    color: var(--hi-vis);
+    border-color: var(--hi-vis-dim);
+  }
+
+  /* ── Main content ── */
+  .main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 0 24px;
+    overflow: hidden;
+  }
+
+  /* ── Big timestamp ── */
+  .time-block {
+    padding: 32px 0 24px;
+    border-bottom: 2px dashed var(--dash);
+    margin-bottom: 20px;
+  }
+  .time-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .time-value {
+    font-size: 28px;
+    font-weight: 900;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+  .time-relative {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--hi-vis);
+    margin-top: 4px;
+  }
+  .time-empty {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-muted);
+  }
+
+  /* ── Map ── */
+  .map-wrapper {
+    flex: 1;
+    position: relative;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    background: var(--surface);
+    margin-bottom: 20px;
+  }
+  .map-wrapper.empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #map {
+    width: 100%;
+    height: 100%;
+  }
+  .leaflet-container {
+    background: var(--surface);
+    font-family: inherit;
+  }
+  .leaflet-control-zoom a {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+    border-color: var(--border) !important;
+  }
+  .leaflet-control-attribution {
+    display: none !important;
+  }
+  .leaflet-popup-content-wrapper {
+    background: var(--surface-raised) !important;
+    color: var(--text) !important;
+    border-radius: 2px !important;
+    border: 1px solid var(--hi-vis-dim) !important;
+    font-family: 'Noto Sans SC', sans-serif !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important;
+  }
+  .leaflet-popup-tip {
+    background: var(--surface-raised) !important;
+  }
+
+  .map-empty-state {
+    text-align: center;
+    color: var(--text-muted);
+  }
+  .map-empty-icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+    opacity: 0.4;
+  }
+  .map-empty-text {
+    font-size: 13px;
+    letter-spacing: 0.05em;
+  }
+
+  /* ── Road marking divider ── */
+  .road-divider {
+    height: 3px;
+    background: repeating-linear-gradient(
+      90deg,
+      var(--text-muted) 0px,
+      var(--text-muted) 24px,
+      transparent 24px,
+      transparent 32px
+    );
+    opacity: 0.3;
+    margin-bottom: 20px;
+  }
+
+  /* ── Action buttons ── */
+  .actions {
+    padding: 0 24px 28px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .btn {
+    font-family: 'Noto Sans SC', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 16px 20px;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-transform: uppercase;
+    position: relative;
+    overflow: hidden;
+  }
+  .btn:active { transform: scale(0.97); }
+
+  .btn-park {
+    background: var(--hi-vis);
+    color: #0a0a0a;
+  }
+  .btn-park:active { background: #b8d900; }
+  .btn-park:disabled {
+    background: var(--surface);
+    color: var(--text-muted);
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  .btn-find {
+    background: transparent;
+    color: var(--hi-vis);
+    border: 2px solid var(--hi-vis);
+  }
+  .btn-find:active { background: rgba(212, 255, 0, 0.08); }
+  .btn-find:disabled {
+    border-color: var(--border);
+    color: var(--text-muted);
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  .btn-full {
+    grid-column: 1 / -1;
+  }
+
+  /* ── Toast ── */
+  .toast {
+    position: fixed;
+    bottom: 120px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--surface-raised);
+    color: var(--hi-vis);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    padding: 10px 20px;
+    border: 1px solid var(--hi-vis-dim);
+    border-radius: 2px;
+    z-index: 200;
+    opacity: 0;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    pointer-events: none;
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  .toast.error {
+    color: var(--danger);
+    border-color: var(--danger);
+  }
+
+  /* ── Loading spinner ── */
+  .spinner-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 10, 10, 0.85);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 300;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  .spinner-overlay.active {
+    opacity: 1;
+    pointer-events: all;
+  }
+  .spinner {
+    width: 40px; height: 40px;
+    border: 3px solid var(--border);
+    border-top-color: var(--hi-vis);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner-text {
+    margin-top: 16px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    color: var(--text-muted);
+  }
+
+  /* ── Location indicator stripes ── */
+  .loc-stripes {
+    display: flex;
+    gap: 3px;
+    margin-bottom: 16px;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  .loc-stripes.visible { opacity: 1; }
+  .loc-stripe {
+    flex: 1;
+    height: 2px;
+    background: var(--hi-vis);
+    opacity: 0;
+    animation: stripe-reveal 0.6s ease forwards;
+  }
+  .loc-stripe:nth-child(1) { animation-delay: 0.0s; }
+  .loc-stripe:nth-child(2) { animation-delay: 0.08s; }
+  .loc-stripe:nth-child(3) { animation-delay: 0.16s; }
+  .loc-stripe:nth-child(4) { animation-delay: 0.24s; }
+  .loc-stripe:nth-child(5) { animation-delay: 0.32s; }
+
+  @keyframes stripe-reveal {
+    0% { opacity: 0; transform: scaleX(0); }
+    100% { opacity: 1; transform: scaleX(1); }
+  }
+
+  /* ── Accuracy indicator ── */
+  .accuracy-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    font-size: 11px;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  .accuracy-bar.visible { opacity: 1; }
+  .accuracy-dots {
+    display: flex;
+    gap: 3px;
+  }
+  .accuracy-dot {
+    width: 16px; height: 3px;
+    background: var(--border);
+    border-radius: 1px;
+    transition: background 0.3s ease;
+  }
+  .accuracy-dot.on { background: var(--hi-vis); }
+  .accuracy-dot.on.dim { background: var(--hi-vis-dim); }
+
+  /* ── Responsive ── */
+  @media (min-width: 540px) {
+    .app { max-width: 480px; margin: 0 auto; }
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+    }
+    .app {
+      height: 100vh;
+      max-height: 900px;
+      border-left: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="tread-pattern"></div>
+<div class="tread-pattern bottom"></div>
+
+<div class="app">
+  <header class="header">
+    <div class="logo">
+      <span class="logo-dot"></span>
+      BIKE · LOCATE
+    </div>
+    <div class="status-tag" id="statusTag">等待定位</div>
+  </header>
+
+  <div class="main">
+    <div class="time-block">
+      <div class="time-label">上次停车位置</div>
+      <div class="time-value" id="timeFull">--</div>
+      <div class="time-relative" id="timeRelative"></div>
+      <div class="time-empty" id="timeEmpty"></div>
+    </div>
+
+    <div class="loc-stripes" id="locStripes">
+      <div class="loc-stripe"></div>
+      <div class="loc-stripe"></div>
+      <div class="loc-stripe"></div>
+      <div class="loc-stripe"></div>
+      <div class="loc-stripe"></div>
+    </div>
+
+    <div class="accuracy-bar" id="accuracyBar">
+      <span>精度</span>
+      <div class="accuracy-dots">
+        <div class="accuracy-dot"></div>
+        <div class="accuracy-dot"></div>
+        <div class="accuracy-dot"></div>
+        <div class="accuracy-dot"></div>
+        <div class="accuracy-dot"></div>
+      </div>
+      <span id="accuracyText">--</span>
+    </div>
+
+    <div class="map-wrapper" id="mapWrapper">
+      <div id="map"></div>
+      <div class="map-empty-state" id="mapEmpty">
+        <div class="map-empty-icon">&#9873;</div>
+        <div class="map-empty-text">尚未记录停车位置</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="road-divider"></div>
+
+  <div class="actions">
+    <button class="btn btn-park" id="btnPark" onclick="parkBike()">
+      停车记录
+    </button>
+    <button class="btn btn-find" id="btnFind" onclick="findBike()" disabled>
+      找车导航
+    </button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="spinner-overlay" id="spinner">
+  <div class="spinner"></div>
+  <div class="spinner-text">获取位置中</div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ── State ──
+let map = null;
+let marker = null;
+let currentPosition = null;
+let savedLocation = null;
+
+const $ = (s) => document.getElementById(s);
+
+// ── Init map ──
+function initMap() {
+  if (map) return;
+  map = L.map('map', {
+    zoomControl: true,
+    attributionControl: false,
+    dragging: true,
+    touchZoom: true,
+  }).setView([31.2304, 121.4737], 14); // Default: Shanghai
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+  }).addTo(map);
+}
+
+// ── Load saved location ──
+function loadSaved() {
+  const raw = localStorage.getItem('bike_location');
+  if (raw) {
+    try {
+      savedLocation = JSON.parse(raw);
+      return true;
+    } catch (e) {
+      localStorage.removeItem('bike_location');
+    }
+  }
+  return false;
+}
+
+// ── Format time ──
+function formatTime(ts) {
+  const d = new Date(ts);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function relativeTime(ts) {
+  const now = Date.now();
+  const diff = now - ts;
+  const mins = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (mins < 1) return '刚刚';
+  if (mins < 60) return `${mins} 分钟前`;
+  if (hours < 24) return `${hours} 小时前`;
+  return `${days} 天前`;
+}
+
+// ── Update accuracy bar ──
+function updateAccuracy(accuracyMeters) {
+  const bar = $('accuracyBar');
+  const text = $('accuracyText');
+  const dots = bar.querySelectorAll('.accuracy-dot');
+
+  let level;
+  if (accuracyMeters <= 5) level = 5;
+  else if (accuracyMeters <= 10) level = 4;
+  else if (accuracyMeters <= 20) level = 3;
+  else if (accuracyMeters <= 50) level = 2;
+  else level = 1;
+
+  dots.forEach((dot, i) => {
+    dot.className = 'accuracy-dot';
+    if (i < level) {
+      dot.classList.add('on');
+      if (level <= 2) dot.classList.add('dim');
+    }
+  });
+
+  text.textContent = `±${Math.round(accuracyMeters)}m`;
+  bar.classList.add('visible');
+}
+
+// ── Render UI ──
+function render() {
+  const hasSaved = loadSaved();
+
+  if (hasSaved && savedLocation) {
+    $('timeFull').textContent = formatTime(savedLocation.timestamp);
+    $('timeRelative').textContent = relativeTime(savedLocation.timestamp);
+    $('timeEmpty').textContent = '';
+    $('btnFind').disabled = false;
+  } else {
+    $('timeFull').textContent = '--';
+    $('timeRelative').textContent = '';
+    $('timeEmpty').textContent = '等待首次停车记录';
+    $('btnFind').disabled = true;
+  }
+}
+
+// ── Toast ──
+let toastTimer;
+function showToast(msg, isError = false, duration = 2500) {
+  const t = $('toast');
+  clearTimeout(toastTimer);
+  t.textContent = msg;
+  t.className = 'toast ' + (isError ? 'error' : '');
+  requestAnimationFrame(() => {
+    t.classList.add('show');
+  });
+  toastTimer = setTimeout(() => {
+    t.classList.remove('show');
+  }, duration);
+}
+
+// ── Spinner ──
+function showSpinner(text = '获取位置中') {
+  $('spinner').querySelector('.spinner-text').textContent = text;
+  $('spinner').classList.add('active');
+}
+function hideSpinner() {
+  $('spinner').classList.remove('active');
+}
+
+// ── Get current position ──
+function getPosition() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('浏览器不支持定位'));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve(pos),
+      (err) => {
+        const msgs = {
+          1: '定位权限被拒绝，请在设置中允许',
+          2: '暂时无法获取位置信息',
+          3: '定位超时，请重试',
+        };
+        reject(new Error(msgs[err.code] || '定位失败'));
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  });
+}
+
+// ── Update marker on map ──
+function updateMapMarker(lat, lng, label) {
+  if (!map) initMap();
+
+  if (marker) map.removeLayer(marker);
+
+  const icon = L.divIcon({
+    className: 'custom-marker',
+    html: `<div style="
+      width: 28px; height: 28px;
+      background: #D4FF00;
+      border: 3px solid #0a0a0a;
+      border-radius: 50% 50% 50% 0;
+      transform: rotate(-45deg);
+      box-shadow: 0 0 20px rgba(212,255,0,0.5), 0 2px 8px rgba(0,0,0,0.6);
+    "></div>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    popupAnchor: [0, -14],
+  });
+
+  marker = L.marker([lat, lng], { icon }).addTo(map);
+  if (label) marker.bindPopup(label, { closeButton: false, autoClose: false }).openPopup();
+
+  map.setView([lat, lng], savedLocation ? 17 : 16, { animate: true });
+
+  $('mapWrapper').classList.remove('empty');
+  $('mapEmpty').style.display = 'none';
+}
+
+// ── PARK ──
+async function parkBike() {
+  const btn = $('btnPark');
+  btn.disabled = true;
+  showSpinner('正在记录停车位置');
+
+  try {
+    const pos = await getPosition();
+    const { latitude, longitude, accuracy } = pos.coords;
+
+    savedLocation = {
+      lat: latitude,
+      lng: longitude,
+      accuracy: accuracy,
+      timestamp: Date.now(),
+    };
+    localStorage.setItem('bike_location', JSON.stringify(savedLocation));
+
+    updateAccuracy(accuracy);
+
+    $('locStripes').classList.add('visible');
+    $('statusTag').textContent = '已记录';
+    $('statusTag').classList.add('active');
+
+    updateMapMarker(latitude, longitude, '我的单车');
+    render();
+
+    showToast('停车位置已记录');
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    hideSpinner();
+    btn.disabled = false;
+  }
+}
+
+// ── FIND ──
+function findBike() {
+  if (!savedLocation) {
+    showToast('没有停车记录', true);
+    return;
+  }
+
+  // Open in maps app
+  const { lat, lng } = savedLocation;
+  const label = encodeURIComponent('我的单车');
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+
+  let url;
+  if (isIOS) {
+    url = `maps://maps.apple.com/?q=${label}&ll=${lat},${lng}`;
+  } else {
+    url = `geo:${lat},${lng}?q=${lat},${lng}(${label})`;
+  }
+
+  // Fallback: try Google Maps in browser
+  const fallback = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+
+  const start = Date.now();
+  window.location.href = url;
+
+  // If no navigation app opened after 1.5s, fallback to browser
+  setTimeout(() => {
+    if (Date.now() - start < 2000) return;
+    window.open(fallback, '_blank');
+  }, 1500);
+}
+
+// ── Update relative time every 30s ──
+function tickTime() {
+  if (savedLocation) {
+    $('timeRelative').textContent = relativeTime(savedLocation.timestamp);
+  }
+}
+
+// ── Auto-park on NFC tap ──
+// When the page opens from an NFC tap, we auto-record the position.
+// The URL hash #auto triggers this behavior.
+function autoParkIfNeeded() {
+  if (window.location.hash === '#auto') {
+    // Clean URL
+    history.replaceState(null, '', window.location.pathname);
+    // Small delay to let the page render
+    setTimeout(() => parkBike(), 600);
+  }
+}
+
+// ── Bootstrap ──
+function bootstrap() {
+  initMap();
+  const hasSaved = loadSaved();
+
+  if (hasSaved && savedLocation) {
+    $('map').style.display = 'block';
+    $('mapWrapper').classList.remove('empty');
+    updateMapMarker(savedLocation.lat, savedLocation.lng, '我的单车');
+    $('locStripes').classList.add('visible');
+    updateAccuracy(savedLocation.accuracy || 20);
+    $('statusTag').textContent = '已记录';
+    $('statusTag').classList.add('active');
+  } else {
+    $('map').style.display = 'none';
+    $('mapWrapper').classList.add('empty');
+    $('mapEmpty').style.display = 'flex';
+  }
+
+  render();
+  autoParkIfNeeded();
+}
+
+document.addEventListener('DOMContentLoaded', bootstrap);
+setInterval(tickTime, 30000);
+</script>
+
+</body>
+</html>
